@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationPackage
+    SchemaVersion="1.0"
+    AutodeskProduct="AutoCAD"
+    ProductType="Application"
+    Name="clipdwg"
+    Description="선택한 선·호·원·폴리라인·텍스트를 벡터(EMF)로 클립보드에 복사"
+    AppVersion="1.0.0"
+    ProductCode="{DD9C7F6D-E94C-4F5B-A5E3-22E9A3FE1DBA}">
+
+  <CompanyDetails Name="clipdwg" />
+
+  <Components Description="AutoCAD 2024 (R24.3)">
+    <RuntimeRequirements OS="Win64" Platform="AutoCAD*" SeriesMin="R24.3" SeriesMax="R24.3" />
+    <!--
+      LoadOnCommandInvocation: CLIPDWG / CLIPDWGCFG 를 처음 실행할 때만 로드한다.
+      AutoCAD 시작 시간을 늘리지 않기 위해서다.
+    -->
+    <ComponentEntry
+        AppName="clipdwg"
+        ModuleName="./Contents/ClipDwg.dll"
+        AppType="AutoCAD 2024"
+        LoadOnAutoCADStartup="False"
+        LoadOnCommandInvocation="True">
+      <Commands GroupName="CLIPDWG">
+        <Command Global="CLIPDWG" Local="CLIPDWG" />
+        <Command Global="CLIPDWGCFG" Local="CLIPDWGCFG" />
+      </Commands>
+    </ComponentEntry>
+  </Components>
+
+</ApplicationPackage>

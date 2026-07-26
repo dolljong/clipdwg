@@ -1,0 +1,75 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    AutoCAD 설치 경로. 다른 위치에 설치했다면 빌드 시 재정의:
+      dotnet build -p:AcadDir2024="D:\...\AutoCAD 2024\"
+  -->
+  <PropertyGroup>
+    <AcadDir2024 Condition="'$(AcadDir2024)' == ''">C:\Program Files\Autodesk\AutoCAD 2024\</AcadDir2024>
+    <AcadDir2025 Condition="'$(AcadDir2025)' == ''">C:\Program Files\Autodesk\AutoCAD 2025\</AcadDir2025>
+  </PropertyGroup>
+
+  <!--
+    AutoCAD 2024 이하 = .NET Framework 4.8 / 2025 이상 = .NET 8.
+    2025가 설치되어 있을 때만 net8 타깃을 켠다. (미설치 시 참조 DLL이 없어 빌드 실패하므로)
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>net48</TargetFrameworks>
+    <TargetFrameworks Condition="Exists('$(AcadDir2025)acmgd.dll')">net48;net8.0-windows</TargetFrameworks>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <AssemblyName>ClipDwg</AssemblyName>
+    <RootNamespace>ClipDwg</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+    <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
+    <!-- AutoCAD 프로세스 안에서 실행되므로 의존 DLL을 출력 폴더로 복사하지 않는다 -->
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <!-- AutoCAD 2024 관리형 API (net48) -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <Reference Include="acmgd">
+      <HintPath>$(AcadDir2024)acmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="acdbmgd">
+      <HintPath>$(AcadDir2024)acdbmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="accoremgd">
+      <HintPath>$(AcadDir2024)accoremgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ClipDwg.Core\ClipDwg.Core.csproj" />
+  </ItemGroup>
+
+  <!-- AutoCAD 2025+ 관리형 API (net8.0-windows) -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <Reference Include="acmgd">
+      <HintPath>$(AcadDir2025)acmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="acdbmgd">
+      <HintPath>$(AcadDir2025)acdbmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="accoremgd">
+      <HintPath>$(AcadDir2025)accoremgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

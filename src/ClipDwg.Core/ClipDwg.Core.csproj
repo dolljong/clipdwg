@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    AutoCAD에 의존하지 않는 부분: 중간표현(IR), EMF 렌더러, 색상-두께 설정, 클립보드.
+    AutoCAD 어셈블리를 참조하지 않는 것이 이 프로젝트의 핵심 제약이다. 덕분에
+      - 단위테스트가 AutoCAD 없이 돌고,
+      - DataContractJsonSerializer 가 어셈블리 특성을 훑을 때 acmgd 를 끌어오지 않는다
+        (ClipDwg 쪽에는 [assembly: CommandClass] 가 있어서 그렇게 된다).
+    여기에 Autodesk 참조를 추가하지 말 것.
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>net48</TargetFrameworks>
+    <TargetFrameworks Condition="Exists('$(AcadDir2025)acmgd.dll')">net48;net8.0-windows</TargetFrameworks>
+    <AssemblyName>ClipDwg.Core</AssemblyName>
+    <RootNamespace>ClipDwg</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Runtime.Serialization" />
+  </ItemGroup>
+
+</Project>
