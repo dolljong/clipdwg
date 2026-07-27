@@ -1,5 +1,6 @@
 # clipdwg
 
+[![Download](https://img.shields.io/github/v/release/dolljong/clipdwg?label=download&color=brightgreen)](https://github.com/dolljong/clipdwg/releases/latest)
 ![AutoCAD 2024](https://img.shields.io/badge/AutoCAD-2024%20(R24.3)-red)
 ![.NET Framework 4.8](https://img.shields.io/badge/.NET%20Framework-4.8-512BD4)
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey)
@@ -28,11 +29,31 @@ AutoCAD 기본 복사(`Ctrl+C`)로도 문서에 붙일 수는 있지만, 실무�
 ## 요구사항
 
 - AutoCAD 2024 (R24.3), Windows x64
-- 빌드 시 .NET Framework 4.8 개발 도구 (Visual Studio 2022 또는 Build Tools)
+- 빌드해서 쓸 때만: .NET Framework 4.8 개발 도구 (Visual Studio 2022 또는 Build Tools)
 
 AutoCAD 2025 이상은 [아래](#autocad-2025-이상) 참고.
 
 ## 설치
+
+### 방법 1 — 빌드된 파일 받기 (권장)
+
+[**Releases 에서 `clipdwg-*.zip` 다운로드**](https://github.com/dolljong/clipdwg/releases/latest) 후,
+AutoCAD를 닫고 PowerShell에서:
+
+```powershell
+cd $env:USERPROFILE\Downloads
+Unblock-File clipdwg-1.0.0.zip                                             # 다운로드 잠금 해제
+Expand-Archive clipdwg-1.0.0.zip "$env:APPDATA\Autodesk\ApplicationPlugins" -Force
+```
+
+압축을 직접 풀어 `clipdwg.bundle` 폴더를
+`%APPDATA%\Autodesk\ApplicationPlugins` 에 넣어도 똑같습니다.
+
+> `Unblock-File` 을 건너뛰면 인터넷에서 받은 표시(Mark of the Web)가 DLL에 남아 AutoCAD가
+> 로드를 막거나 보안 경고를 띄웁니다. 이미 풀었다면
+> `Get-ChildItem "$env:APPDATA\Autodesk\ApplicationPlugins\clipdwg.bundle" -Recurse | Unblock-File`.
+
+### 방법 2 — 소스에서 빌드
 
 ```powershell
 git clone https://github.com/dolljong/clipdwg.git
@@ -40,15 +61,19 @@ cd clipdwg
 powershell -ExecutionPolicy Bypass -File tools\install.ps1
 ```
 
-`%APPDATA%\Autodesk\ApplicationPlugins\clipdwg.bundle` 로 설치됩니다.
+### 공통
+
+두 방법 모두 `%APPDATA%\Autodesk\ApplicationPlugins\clipdwg.bundle` 로 설치됩니다.
 AutoCAD를 다시 켜면 명령을 바로 쓸 수 있습니다. 명령을 처음 칠 때 로드되므로 AutoCAD
 시작 시간은 늘어나지 않습니다.
 
+제거는 그 폴더를 지우면 됩니다. 소스로 설치했다면:
+
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools\install.ps1 -Uninstall   # 제거
+powershell -ExecutionPolicy Bypass -File tools\install.ps1 -Uninstall
 ```
 
-> AutoCAD가 실행 중이면 DLL이 잠겨 설치에 실패합니다. 스크립트가 어떤 프로세스가
+> AutoCAD가 실행 중이면 DLL이 잠겨 설치에 실패합니다. `install.ps1` 은 어떤 프로세스가
 > 잡고 있는지 알려 주니, 닫고 다시 실행하세요.
 
 ## 사용법
@@ -174,7 +199,8 @@ src/ClipDwg.Core/     AutoCAD 비의존 — IR, EMF 렌더러, 색상-두께 설
 src/ClipDwg/          AutoCAD 의존 — 명령 진입점, 엔티티 추출
 test/ClipDwg.Tests/   ClipDwg.Core 만 참조하므로 AutoCAD 없이 실행
 package/              자동 로드 번들 정의
-tools/install.ps1     빌드 + 설치
+tools/install.ps1     빌드 + 내 PC에 설치
+tools/pack.ps1        빌드 + 배포용 dist\clipdwg-<버전>.zip 생성
 ```
 
 ```powershell
@@ -190,6 +216,17 @@ AutoCAD를 다른 경로에 설치했다면:
 ```powershell
 dotnet build ClipDwg.sln -c Release -p:AcadDir2024="D:\...\AutoCAD 2024\"
 ```
+
+### 릴리스
+
+`package\PackageContents.xml` 의 `AppVersion` 을 올린 뒤:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\pack.ps1
+gh release create v1.0.0 dist\clipdwg-1.0.0.zip --title "clipdwg 1.0.0" --notes "..."
+```
+
+zip 버전은 `AppVersion` 을 그대로 따라가므로 태그와 어긋나지 않게 맞춰 주세요.
 
 ### 설계 메모
 
