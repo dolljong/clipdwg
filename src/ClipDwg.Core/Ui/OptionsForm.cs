@@ -515,8 +515,7 @@ public sealed class OptionsForm : Form
 
         if (_grid.Columns[e.ColumnIndex].Name == "color")
         {
-            e.CellStyle.BackColor = SwatchFor(color);
-            e.CellStyle.ForeColor = Contrast(e.CellStyle.BackColor);
+            StyleColorCell(e.CellStyle, color);
         }
         else if (_grid.Columns[e.ColumnIndex].Name == "note")
         {
@@ -526,16 +525,41 @@ public sealed class OptionsForm : Form
         }
     }
 
-    private static Color SwatchFor(string color)
+    /// <summary>
+    /// 색 칸에 견본색을 입힌다. 알아볼 수 없는 색이면 손대지 않고 기본 모양으로 둔다.
+    /// <para>
+    /// 표가 <see cref="DataGridViewSelectionMode.FullRowSelect"/>라 행을 고르면 선택색이 셀
+    /// 배경을 통째로 덮어 견본이 가려진다. 견본은 이 표의 요점이므로 선택색도 같은 색으로
+    /// 지정해 선택한 행에서도 그대로 보이게 한다. 행이 선택됐다는 표시는 나머지 칸의
+    /// 반전으로 충분하다.
+    /// </para>
+    /// </summary>
+    internal static void StyleColorCell(DataGridViewCellStyle style, string color)
+    {
+        if (!TryGetSwatch(color, out Color swatch))
+            return;
+
+        Color ink = Contrast(swatch);
+        style.BackColor = swatch;
+        style.ForeColor = ink;
+        style.SelectionBackColor = swatch;
+        style.SelectionForeColor = ink;
+    }
+
+    private static bool TryGetSwatch(string color, out Color swatch)
     {
         if (ColorWeightMap.TryParseRgb(color, out int rgb))
-            return Color.FromArgb((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+        {
+            swatch = Color.FromArgb((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+            return true;
+        }
 
         if (int.TryParse(color, NumberStyles.Integer, CultureInfo.InvariantCulture, out int aci)
-            && AciPalette.TryGetColor(aci, out Color c))
-            return c;
+            && AciPalette.TryGetColor(aci, out swatch))
+            return true;
 
-        return SystemColors.Window;
+        swatch = SystemColors.Window;
+        return false;
     }
 
     private static Color Contrast(Color background) =>

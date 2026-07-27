@@ -1,5 +1,7 @@
 using System;
+using System.Drawing;
 using System.Threading;
+using System.Windows.Forms;
 using ClipDwg.Style;
 using ClipDwg.Ui;
 using Xunit;
@@ -49,6 +51,36 @@ public class OptionsFormTests
         });
 
         Assert.Null(error);
+    }
+
+    /// <summary>
+    /// 표가 FullRowSelect라 선택색을 같이 지정하지 않으면 행을 고르는 순간 색 견본이
+    /// 선택색에 덮여 보이지 않는다.
+    /// </summary>
+    [Theory]
+    [InlineData("1", 255, 0, 0)]      // ACI
+    [InlineData("#FF8000", 255, 128, 0)] // 트루컬러
+    public void StyleColorCell_KeepsSwatchWhenRowIsSelected(string color, int r, int g, int b)
+    {
+        var style = new DataGridViewCellStyle();
+
+        OptionsForm.StyleColorCell(style, color);
+
+        Color expected = Color.FromArgb(r, g, b);
+        Assert.Equal(expected.ToArgb(), style.BackColor.ToArgb());
+        Assert.Equal(expected.ToArgb(), style.SelectionBackColor.ToArgb());
+        Assert.Equal(style.ForeColor.ToArgb(), style.SelectionForeColor.ToArgb());
+    }
+
+    [Fact]
+    public void StyleColorCell_LeavesUnknownColorAlone()
+    {
+        var style = new DataGridViewCellStyle();
+
+        OptionsForm.StyleColorCell(style, "그런색없음");
+
+        Assert.True(style.BackColor.IsEmpty);
+        Assert.True(style.SelectionBackColor.IsEmpty);
     }
 
     private static Exception? RunSta(Action action)
