@@ -156,6 +156,14 @@ public static class EmfRenderer
                     groups[key] = path;
                 }
 
+                List<IrPath>? dashes = DashShape(shape, options, t);
+                if (dashes is not null)
+                {
+                    foreach (IrPath piece in dashes)
+                        AddPath(path, piece, t);
+                    continue;
+                }
+
                 switch (shape)
                 {
                     case IrPath p:
@@ -334,6 +342,36 @@ public static class EmfRenderer
         g.DrawString(text.Text, font, brush, dx, dy, format);
     }
 
+
+    /// <summary>
+    /// 출력에서 패턴 한 주기가 이보다 짧으면(mm) 대시가 서로 붙어 어차피 실선으로 보인다.
+    /// 조각만 수만 개 생기므로 실선으로 그린다.
+    /// </summary>
+    private const double MinPatternMm = 0.1;
+
+    /// <summary>도형 하나에서 나올 수 있는 최대 대시 조각 수. 넘으면 실선으로 그린다.</summary>
+    private const int MaxDashesPerShape = 20000;
+
+    /// <summary>선종류가 있는 도형을 대시 조각으로 자른다. 실선으로 그릴 도형이면 null.</summary>
+    private static List<IrPath>? DashShape(IrShape shape, RenderOptions options, PlaneTransform t)
+    {
+        IrLinetype? linetype = shape.Linetype;
+        if (linetype is null || !linetype.IsDashed)
+            return null;
+
+        if (linetype.PatternLength * options.UnitScale < MinPatternMm)
+            return null;
+
+        // 점 요소는 장치 1단위 길이의 선으로 그린다. 길이 0인 선은 GDI가 아예 그리지 않는다.
+        double dotLength = 1.0 / Math.Max(t.ScaleX, t.ScaleY);
+
+        return shape switch
+        {
+            IrPath p => LinetypeDasher.Dash(p, linetype, dotLength, MaxDashesPerShape),
+            IrCircle c => LinetypeDasher.Dash(c, linetype, dotLength, MaxDashesPerShape),
+            _ => null,
+        };
+    }
 
     private static void AddPath(GraphicsPath target, IrPath path, PlaneTransform t)
     {

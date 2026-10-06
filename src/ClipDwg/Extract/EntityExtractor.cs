@@ -33,6 +33,7 @@ public static class EntityExtractor
     {
         var doc = new IrDocument();
         var layers = new Dictionary<ObjectId, LayerInfo>();
+        LinetypeResolver? linetypes = null;
 
         foreach (ObjectId id in ids)
         {
@@ -51,6 +52,13 @@ public static class EntityExtractor
 
             IrColor color = ResolveColor(ent.Color, layer.Color, DefaultColor);
 
+            linetypes ??= new LinetypeResolver(tr, ent.Database);
+            double spaceScale = linetypes.SpaceScale(ent);
+
+            // 블록 밖의 ByBlock 은 AutoCAD도 실선으로 그린다.
+            LinetypeRef linetype = linetypes.Resolve(ent, layer.LinetypeId, LinetypeRef.Continuous, spaceScale);
+            int firstShape = doc.Shapes.Count;
+
             // 여러 개의 도형으로 쪼개지는 것들은 문서에 직접 담는 경로를 따로 둔다.
             if (ent is MText mtext)
             {
@@ -61,7 +69,8 @@ public static class EntityExtractor
 
             if (ent is Dimension or Leader or MLeader)
             {
-                if (!AddAnnotation(doc, ent, color, tr, layers, fonts, stats, depth: 0))
+                var context = new PieceContext(tr, layers, fonts, stats, linetypes, spaceScale);
+                if (!AddAnnotation(doc, ent, color, linetype, context, depth: 0))
                     stats.Failed++;
                 continue;
             }
@@ -70,6 +79,7 @@ public static class EntityExtractor
             {
                 if (!AddLwPolyline(doc, lwPolyline, color, stats))
                     stats.Failed++;
+                linetypes.Apply(doc, firstShape, linetype, lwPolyline.Plinegen);
                 continue;
             }
 
@@ -86,12 +96,54 @@ public static class EntityExtractor
             };
 
             if (shape is null)
+            {
                 stats.Failed++;
+            }
             else
+            {
                 doc.Shapes.Add(shape);
+                linetypes.Apply(doc, firstShape, linetype, LinetypeGen(ent));
+            }
         }
 
         return doc;
+    }
+
+    /// <summary>패턴을 정점에서 끊지 않고 이어 갈지(PLINEGEN).</summary>
+    private static bool LinetypeGen(Entity entity) => entity switch
+    {
+        Polyline pl => pl.Plinegen,
+        Polyline2d p2 => p2.LinetypeGenerationOn,
+        _ => false,
+    };
+
+    /// <summary>치수·지시선을 분해한 조각을 처리할 때 공통으로 넘기는 것들.</summary>
+    private sealed class PieceContext
+    {
+        public readonly Transaction Tr;
+        public readonly Dictionary<ObjectId, LayerInfo> Layers;
+        public readonly FontResolver? Fonts;
+        public readonly ExtractStats Stats;
+        public readonly LinetypeResolver Linetypes;
+
+        /// <summary>감싸는 최상위 엔티티가 놓인 공간의 선종류 배율(MSLTSCALE).</summary>
+        public readonly double SpaceScale;
+
+        public PieceContext(
+            Transaction tr,
+            Dictionary<ObjectId, LayerInfo> layers,
+            FontResolver? fonts,
+            ExtractStats stats,
+            LinetypeResolver linetypes,
+            double spaceScale)
+        {
+            Tr = tr;
+            Layers = layers;
+            Fonts = fonts;
+            Stats = stats;
+            Linetypes = linetypes;
+            SpaceScale = spaceScale;
+        }
     }
 
     // ---- 치수·지시선 ----------------------------------------------------
@@ -111,10 +163,8 @@ public static class EntityExtractor
         IrDocument doc,
         Entity entity,
         IrColor blockColor,
-        Transaction tr,
-        Dictionary<ObjectId, LayerInfo> layers,
-        FontResolver? fonts,
-        ExtractStats stats,
+        LinetypeRef blockLinetype,
+        PieceContext context,
         int depth)
     {
         if (depth > MaxAnnotationDepth)
@@ -138,15 +188,24 @@ public static class EntityExtractor
                 if (obj is not Entity piece)
                     continue;
 
-                LayerInfo layer = GetLayer(tr, piece.LayerId, layers);
+                LayerInfo layer = GetLayer(context.Tr, piece.LayerId, context.Layers);
                 if (!piece.Visible || !layer.Visible)
                     continue;
 
-                // 분해된 조각은 대개 ByBlock 이다. 감싸던 치수의 색으로 해석해야 한다.
+                // 분해된 조각은 대개 ByBlock 이다. 감싸던 치수의 색·선종류로 해석해야 한다.
                 IrColor color = ResolveColor(piece.Color, layer.Color, blockColor);
+                LinetypeRef linetype = context.Linetypes.Resolve(
+                    piece, layer.LinetypeId, blockLinetype, context.SpaceScale);
 
-                if (AddPiece(doc, piece, color, tr, layers, fonts, stats, depth))
+                int firstShape = doc.Shapes.Count;
+                if (AddPiece(doc, piece, color, linetype, context, depth))
+                {
                     added = true;
+
+                    // 중첩된 블록·치수는 안쪽 조각마다 이미 선종류를 붙였다.
+                    if (piece is not (BlockReference or Dimension or Leader or MLeader))
+                        context.Linetypes.Apply(doc, firstShape, linetype, LinetypeGen(piece));
+                }
             }
         }
 
@@ -157,12 +216,14 @@ public static class EntityExtractor
         IrDocument doc,
         Entity piece,
         IrColor color,
-        Transaction tr,
-        Dictionary<ObjectId, LayerInfo> layers,
-        FontResolver? fonts,
-        ExtractStats stats,
+        LinetypeRef linetype,
+        PieceContext context,
         int depth)
     {
+        Transaction tr = context.Tr;
+        FontResolver? fonts = context.Fonts;
+        ExtractStats stats = context.Stats;
+
         switch (piece)
         {
             case MText mtext:
@@ -170,7 +231,7 @@ public static class EntityExtractor
 
             // 커스텀 화살촉은 블록으로 들어온다.
             case BlockReference or Dimension or Leader or MLeader:
-                return AddAnnotation(doc, piece, color, tr, layers, fonts, stats, depth + 1);
+                return AddAnnotation(doc, piece, color, linetype, context, depth + 1);
 
             // 폭을 가진 폴리라인은 여러 도형으로 쪼개질 수 있다. (점 화살촉이 이 경로다)
             case Polyline lwPolyline:
@@ -641,6 +702,9 @@ public static class EntityExtractor
         if (length <= 0)
             return false;
 
+        // 근사로 생긴 정점은 실제 정점이 아니므로 선종류 패턴을 끊으면 안 된다.
+        path.LinetypeGen = true;
+
         for (int i = 1; i <= samples; i++)
         {
             try
@@ -665,11 +729,13 @@ public static class EntityExtractor
     {
         public readonly bool Visible;
         public readonly IrColor Color;
+        public readonly ObjectId LinetypeId;
 
-        public LayerInfo(bool visible, IrColor color)
+        public LayerInfo(bool visible, IrColor color, ObjectId linetypeId)
         {
             Visible = visible;
             Color = color;
+            LinetypeId = linetypeId;
         }
     }
 
@@ -681,8 +747,8 @@ public static class EntityExtractor
             return info;
 
         info = tr.GetObject(layerId, OpenMode.ForRead, false, false) is LayerTableRecord ltr
-            ? new LayerInfo(!ltr.IsOff && !ltr.IsFrozen, ToIrColor(ltr.Color, DefaultColor))
-            : new LayerInfo(true, DefaultColor);
+            ? new LayerInfo(!ltr.IsOff && !ltr.IsFrozen, ToIrColor(ltr.Color, DefaultColor), ltr.LinetypeObjectId)
+            : new LayerInfo(true, DefaultColor, ObjectId.Null);
 
         cache[layerId] = info;
         return info;

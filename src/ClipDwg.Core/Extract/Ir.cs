@@ -104,7 +104,46 @@ public abstract class IrShape
     /// </summary>
     public double IntrinsicWidth;
 
+    /// <summary>선종류. null 이면 실선(Continuous).</summary>
+    public IrLinetype? Linetype;
+
     public abstract void AccumulateBounds(ref Bounds bounds);
+}
+
+/// <summary>
+/// 해석이 끝난 선종류 패턴. ByLayer/ByBlock 과 LTSCALE·CELTSCALE 은 추출 시점에 이미 반영된다.
+/// </summary>
+public sealed class IrLinetype
+{
+    /// <summary>
+    /// 패턴 요소(도면 단위, 축척 반영). 양수 = 선, 음수 = 공백, 0 = 점.
+    /// </summary>
+    public readonly double[] Dashes;
+
+    public readonly string Name;
+
+    public IrLinetype(string name, double[] dashes)
+    {
+        Name = name ?? string.Empty;
+        Dashes = dashes ?? throw new ArgumentNullException(nameof(dashes));
+    }
+
+    /// <summary>패턴 한 주기의 길이(도면 단위).</summary>
+    public double PatternLength
+    {
+        get
+        {
+            double sum = 0;
+            foreach (double d in Dashes)
+                sum += Math.Abs(d);
+            return sum;
+        }
+    }
+
+    /// <summary>공백이 하나라도 있어야 실선과 구별된다.</summary>
+    public bool IsDashed => PatternLength > 0 && Array.Exists(Dashes, d => d < 0);
+
+    public override string ToString() => $"{Name} [{string.Join(", ", Dashes)}]";
 }
 
 /// <summary>선·호·폴리라인이 모두 여기로 수렴한다.</summary>
@@ -113,6 +152,12 @@ public sealed class IrPath : IrShape
     public Pt Start;
     public readonly List<IrSegment> Segments = new();
     public bool Closed;
+
+    /// <summary>
+    /// 선종류 패턴을 정점에서 끊지 않고 경로 전체에 이어서 적용한다(PLINEGEN).
+    /// false 면 AutoCAD 처럼 구간마다 패턴을 새로 시작한다.
+    /// </summary>
+    public bool LinetypeGen;
 
     public override void AccumulateBounds(ref Bounds bounds)
     {
